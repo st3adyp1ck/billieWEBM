@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billie WebM Converter</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Magical floating elements -->
+    <div class="magic-elements">
+        <div class="magic-element">✨</div>
+        <div class="magic-element">🪄</div>
+        <div class="magic-element">⭐</div>
+        <div class="magic-element">🌟</div>
+        <div class="magic-element">💫</div>
+        <div class="magic-element">🎭</div>
+        <div class="magic-element">🎪</div>
+        <div class="magic-element">🎨</div>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <img src="billie.png" alt="Billie" class="billie-logo">
+                <div class="title-section">
+                    <h1 id="main-title">Billie's Magic Video Converter</h1>
+                    <p id="subtitle">Transform your videos into magical WebM format! ✨</p>
+                </div>
+                <button id="language-toggle" class="language-toggle">
+                    <i class="fas fa-language"></i>
+                    <span id="language-text">Switch to French</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Instructions -->
+            <section class="instructions">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <h3 id="step1">Step 1: Upload your video file</h3>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <h3 id="step2">Step 2: Wait for automatic conversion</h3>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <h3 id="step3">Step 3: Download your new WebM file</h3>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Conversion Interface -->
+            <section class="conversion-interface">
+                <!-- File Upload -->
+                <div id="upload-section" class="upload-section">
+                    <div class="upload-area" id="upload-area">
+                        <input type="file" id="file-input" accept=".mp4,.avi,.mov,.mkv,.webm,.3gp,.flv,.wmv,.m4v,.mpg,.mpeg,.ogv,video/*" hidden>
+                        <div class="upload-content">
+                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                            <p class="upload-text" id="upload-text">Drag and drop your video file here</p>
+                            <p class="upload-subtext">
+                                <span id="or-text">or</span> 
+                                <span class="click-text" id="click-text">Click to select file</span>
+                            </p>
+                            <div class="upload-info">
+                                <p id="max-size">Max file size: 500MB</p>
+                                <p id="supported-format">Supported formats: MP4, AVI, MOV, MKV, WebM, and more</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="error-message" class="error-message hidden"></div>
+                </div>
+
+                <!-- File Preview -->
+                <div id="preview-section" class="preview-section hidden">
+                    <div class="preview-card">
+                        <video id="preview-video" class="preview-video" controls muted></video>
+                        <div class="file-info">
+                            <div class="file-details">
+                                <i class="fas fa-file-video"></i>
+                                <div>
+                                    <p id="file-name" class="file-name"></p>
+                                    <p id="file-size" class="file-size"></p>
+                                </div>
+                            </div>
+                            <button id="clear-file" class="clear-button">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Progress -->
+                <div id="progress-section" class="progress-section hidden">
+                    <div class="progress-card">
+                        <div class="progress-icon">
+                            <i class="fas fa-cog fa-spin"></i>
+                        </div>
+                        <p id="progress-text" class="progress-text">Converting video...</p>
+                        <div class="progress-bar">
+                            <div id="progress-fill" class="progress-fill"></div>
+                        </div>
+                        <p id="progress-percentage" class="progress-percentage">0%</p>
+                    </div>
+                </div>
+
+                <!-- Download -->
+                <div id="download-section" class="download-section hidden">
+                    <div class="download-card">
+                        <div class="success-icon">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <h3 id="success-title">Conversion complete!</h3>
+                        <p id="success-message">Your WebM file is ready for download</p>
+                        <div class="download-buttons">
+                            <button id="download-button" class="download-button">
+                                <i class="fas fa-download"></i>
+                                <span id="download-text">Download WebM</span>
+                            </button>
+                            <button id="convert-another" class="convert-another-button">
+                                <i class="fas fa-redo"></i>
+                                <span id="convert-another-text">Convert Another File</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="translations.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
