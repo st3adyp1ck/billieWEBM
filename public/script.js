@@ -120,19 +120,21 @@ class VideoConverter {
     showPreview() {
         this.hideAllSections();
         this.previewSection.classList.remove('hidden');
-        
+
+        // Clean up previous video URL if it exists
+        if (this.currentVideoUrl) {
+            URL.revokeObjectURL(this.currentVideoUrl);
+        }
+
         // Set video preview
-        const videoUrl = URL.createObjectURL(this.currentFile);
-        this.previewVideo.src = videoUrl;
-        
+        this.currentVideoUrl = URL.createObjectURL(this.currentFile);
+        this.previewVideo.src = this.currentVideoUrl;
+
         // Set file info
         this.fileName.textContent = this.currentFile.name;
         this.fileSize.textContent = `${(this.currentFile.size / (1024 * 1024)).toFixed(2)} MB`;
-        
-        // Clean up URL after video loads
-        this.previewVideo.addEventListener('loadeddata', () => {
-            URL.revokeObjectURL(videoUrl);
-        }, { once: true });
+
+        // Don't revoke URL immediately - keep it for the duration of the preview
     }
     
     async startConversion() {
@@ -257,10 +259,16 @@ class VideoConverter {
     }
     
     clearFile() {
+        // Clean up video URL
+        if (this.currentVideoUrl) {
+            URL.revokeObjectURL(this.currentVideoUrl);
+            this.currentVideoUrl = null;
+        }
+
         this.currentFile = null;
         this.conversionId = null;
         this.stopProgressTracking();
-        
+
         this.fileInput.value = '';
         this.hideAllSections();
         this.uploadSection.classList.remove('hidden');

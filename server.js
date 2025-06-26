@@ -99,6 +99,28 @@ function checkFFmpegAvailability() {
   });
 }
 
+// Validate output video duration to ensure it's under 3 seconds
+function validateOutputDuration(outputPath) {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(outputPath, (err, metadata) => {
+      if (err) {
+        reject(new Error('Unable to read output video metadata'));
+        return;
+      }
+
+      const duration = parseFloat(metadata.format.duration);
+      console.log(`Output video duration: ${duration} seconds`);
+
+      if (duration > 3.0) {
+        reject(new Error(`Output video duration (${duration.toFixed(2)}s) exceeds 3 seconds`));
+        return;
+      }
+
+      resolve(duration);
+    });
+  });
+}
+
 // Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -135,7 +157,7 @@ app.post('/api/convert', upload.single('video'), async (req, res) => {
     originalName: req.file.originalname
   });
 
-  // Start FFmpeg conversion with optimized settings for speed
+  // Start FFmpeg conversion with optimized settings for small file size and 3-second limit
   ffmpeg(inputPath)
     .videoFilters([
       // Scale to fit within 512x512 while preserving aspect ratio
@@ -145,15 +167,24 @@ app.post('/api/convert', upload.single('video'), async (req, res) => {
     ])
     .videoCodec('libvpx-vp9')
     .audioCodec('libopus')
-    .videoBitrate('800k')        // Slightly lower for faster encoding
-    .audioBitrate('128k')
+    .videoBitrate('400k')        // Reduced for smaller file size
+    .audioBitrate('64k')         // Reduced for smaller file size
+    .inputOptions(['-ss 0'])     // Start from beginning
+    .outputOptions(['-t 2.9'])   // Cut to exactly 2.9 seconds
     .format('webm')
     .addOptions([
       '-threads 0',              // Use all available CPU cores
-      '-speed 4',                // Faster encoding (slight quality trade-off)
-      '-tile-columns 2',         // VP9 optimization
+      '-speed 6',                // Faster encoding for smaller files
+      '-tile-columns 1',         // VP9 optimization for small videos
       '-frame-parallel 1',       // Enable frame parallel processing
-      '-crf 30'                  // Constant rate factor for good quality/speed balance
+      '-crf 35',                 // Higher CRF for smaller file size
+      '-deadline realtime',      // Optimize for speed
+      '-cpu-used 5',             // Faster encoding
+      '-static-thresh 0',        // Disable static threshold
+      '-max-intra-rate 300',     // Limit intra frame rate
+      '-lag-in-frames 0',        // No lag for real-time encoding
+      '-avoid_negative_ts make_zero', // Ensure proper timing (corrected syntax)
+      '-fflags', '+genpts'       // Generate presentation timestamps (corrected syntax)
     ])
     .on('start', (commandLine) => {
       console.log('FFmpeg started with command:', commandLine);
@@ -167,12 +198,54 @@ app.post('/api/convert', upload.single('video'), async (req, res) => {
       });
       console.log(`Conversion progress: ${percent}%`);
     })
-    .on('end', () => {
+    .on('end', async () => {
       console.log('Conversion finished');
-      conversionProgress.set(conversionId, { progress: 100, stage: 'completed' });
-      
-      // Clean up input file
-      fs.remove(inputPath).catch(console.error);
+
+      try {
+        // Validate output duration to ensure it's under 3 seconds
+        const duration = await validateOutputDuration(outputPath);
+        console.log(`Output video validated: ${duration.toFixed(2)} seconds`);
+
+        // Check output file size (must be under 256 KB)
+        const stats = await fs.stat(outputPath);
+        const fileSizeKB = stats.size / 1024;
+
+        if (fileSizeKB > 256) {
+          console.log(`Output file too large: ${fileSizeKB.toFixed(2)} KB`);
+          conversionProgress.set(conversionId, {
+            progress: 0,
+            stage: 'error',
+            error: 'Output file exceeds 256KB limit. Try a shorter or lower quality video.'
+          });
+
+          // Clean up files
+          fs.remove(inputPath).catch(console.error);
+          fs.remove(outputPath).catch(console.error);
+          return;
+        }
+
+        console.log(`Output file size: ${fileSizeKB.toFixed(2)} KB, Duration: ${duration.toFixed(2)}s`);
+        conversionProgress.set(conversionId, {
+          progress: 100,
+          stage: 'completed',
+          outputPath: outputPath,
+          outputFilename: outputFilename
+        });
+
+        // Clean up input file
+        fs.remove(inputPath).catch(console.error);
+      } catch (error) {
+        console.error('Output validation failed:', error);
+        conversionProgress.set(conversionId, {
+          progress: 0,
+          stage: 'error',
+          error: error.message
+        });
+
+        // Clean up files
+        fs.remove(inputPath).catch(console.error);
+        fs.remove(outputPath).catch(console.error);
+      }
     })
     .on('error', (err) => {
       console.error('FFmpeg error:', err);
@@ -202,48 +275,47 @@ app.get('/api/progress/:conversionId', (req, res) => {
 });
 
 // Download converted video
-app.get('/api/download/:conversionId', (req, res) => {
-  const { conversionId } = req.params;
-  const progress = conversionProgress.get(conversionId);
-  
-  if (!progress || progress.stage !== 'completed') {
-    return res.status(404).json({ error: 'Conversion not completed or not found' });
-  }
-  
-  // Find the output file by looking for files created around the same time
-  const outputFiles = fs.readdirSync(outputDir);
-  const targetTime = parseInt(conversionId);
-  let outputFile = null;
+app.get('/api/download/:conversionId', async (req, res) => {
+  try {
+    const { conversionId } = req.params;
+    const progress = conversionProgress.get(conversionId);
 
-  for (const file of outputFiles) {
-    const filePath = path.join(outputDir, file);
-    const stats = fs.statSync(filePath);
-    const fileTime = stats.birthtimeMs || stats.ctimeMs;
+    if (!progress || progress.stage !== 'completed') {
+      return res.status(404).json({ error: 'Conversion not completed or not found' });
+    }
 
-    // Check if file was created within 5 minutes of conversion start
-    if (Math.abs(fileTime - targetTime) < 5 * 60 * 1000) {
-      outputFile = file;
-      break;
+    const filePath = progress.outputPath;
+    const filename = progress.outputFilename || 'converted-video.webm';
+
+    // Check if file exists
+    if (!await fs.pathExists(filePath)) {
+      return res.status(404).json({ error: 'Converted file not found on disk' });
     }
+
+    // Set proper headers for download
+    res.setHeader('Content-Type', 'video/webm');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // Send the file
+    res.sendFile(path.resolve(filePath), (err) => {
+      if (err) {
+        console.error('Download error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to download file' });
+        }
+      } else {
+        console.log(`File downloaded successfully: ${filename}`);
+        // Clean up the file after download
+        setTimeout(() => {
+          fs.remove(filePath).catch(console.error);
+          conversionProgress.delete(conversionId);
+        }, 5000); // 5 second delay to ensure download completes
+      }
+    });
+  } catch (error) {
+    console.error('Download endpoint error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  
-  if (!outputFile) {
-    return res.status(404).json({ error: 'Converted file not found' });
-  }
-  
-  const filePath = path.join(outputDir, outputFile);
-  
-  res.download(filePath, 'converted-video.webm', (err) => {
-    if (err) {
-      console.error('Download error:', err);
-    } else {
-      // Clean up the file after download
-      setTimeout(() => {
-        fs.remove(filePath).catch(console.error);
-        conversionProgress.delete(conversionId);
-      }, 5000); // Wait 5 seconds before cleanup
-    }
-  });
 });
 
 // Clean up old files periodically
