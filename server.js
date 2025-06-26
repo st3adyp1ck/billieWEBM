@@ -126,6 +126,40 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Health check endpoint for Railway
+app.get('/health', async (req, res) => {
+  try {
+    const ffmpegAvailable = await checkFFmpegAvailability();
+    const directoriesExist = fs.existsSync(uploadsDir) && fs.existsSync(outputDir);
+
+    const health = {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      environment: {
+        platform: process.platform,
+        nodeVersion: process.version,
+        isRailway: process.env.RAILWAY_ENVIRONMENT !== undefined,
+        isProduction: process.env.NODE_ENV === 'production'
+      },
+      services: {
+        ffmpeg: ffmpegAvailable,
+        directories: directoriesExist,
+        uploadsDir: uploadsDir,
+        outputDir: outputDir
+      }
+    };
+
+    const statusCode = ffmpegAvailable && directoriesExist ? 200 : 503;
+    res.status(statusCode).json(health);
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Upload and convert video
 app.post('/api/convert', upload.single('video'), async (req, res) => {
   if (!req.file) {
