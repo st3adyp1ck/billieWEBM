@@ -25,59 +25,39 @@ if (process.platform === 'win32') {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Cloud platform detection
-const isRailway = process.env.RAILWAY_ENVIRONMENT !== undefined;
-const isRender = process.env.RENDER !== undefined;
-const isProduction = process.env.NODE_ENV === 'production';
-
-console.log('=== SERVER CONFIGURATION ===');
-console.log('Port:', PORT);
-console.log('Is Railway:', isRailway);
-console.log('Is Render:', isRender);
-console.log('Is Production:', isProduction);
-console.log('Node Version:', process.version);
-
 // Middleware
-app.use(cors({
-  origin: isProduction ? true : ['http://localhost:3000', 'http://127.0.0.1:3000'],
-  credentials: true
-}));
+app.use(cors());
+app.use(express.json());
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use(express.static('public'));
-
-// Add request logging for debugging
+// Request logging middleware for debugging
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
   next();
 });
 
+// Static file serving with proper MIME types and caching headers
+app.use(express.static('public', {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css');
+    } else if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    } else if (path.endsWith('.png')) {
+      res.setHeader('Content-Type', 'image/png');
+    } else if (path.endsWith('.ico')) {
+      res.setHeader('Content-Type', 'image/x-icon');
+    }
+    // Add cache control headers
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hours
+  }
+}));
+
 // Create uploads and output directories
-// Use /tmp for Render and other cloud platforms
-const baseDir = isRender || isRailway || isProduction ? '/tmp' : __dirname;
-const uploadsDir = path.join(baseDir, 'uploads');
-const outputDir = path.join(baseDir, 'output');
+const uploadsDir = path.join(__dirname, 'uploads');
+const outputDir = path.join(__dirname, 'output');
 
-console.log('=== DIRECTORY SETUP ===');
-console.log('Base directory:', baseDir);
-console.log('Uploads directory:', uploadsDir);
-console.log('Output directory:', outputDir);
-
-try {
-  fs.ensureDirSync(uploadsDir);
-  fs.ensureDirSync(outputDir);
-  console.log('Directories created successfully');
-
-  // Test write permissions
-  const testFile = path.join(uploadsDir, 'test.txt');
-  fs.writeFileSync(testFile, 'test');
-  fs.removeSync(testFile);
-  console.log('Directory write permissions verified');
-} catch (error) {
-  console.error('Directory setup failed:', error);
-  console.error('This may cause upload failures');
-}
+fs.ensureDirSync(uploadsDir);
+fs.ensureDirSync(outputDir);
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -168,38 +148,67 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Health check endpoint for cloud platforms
-app.get('/health', async (req, res) => {
+// Explicit CSS route to ensure proper MIME type
+app.get('/styles.css', (req, res) => {
+  res.setHeader('Content-Type', 'text/css');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.sendFile(path.join(__dirname, 'public', 'styles.css'));
+});
+
+// Explicit JS route to ensure proper MIME type
+app.get('/script.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.sendFile(path.join(__dirname, 'public', 'script.js'));
+});
+
+// Explicit translations route
+app.get('/translations.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.sendFile(path.join(__dirname, 'public', 'translations.js'));
+});
+
+// Explicit image routes
+app.get('/billie.png', (req, res) => {
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.sendFile(path.join(__dirname, 'public', 'billie.png'));
+});
+
+app.get('/favicon.ico', (req, res) => {
+  res.setHeader('Content-Type', 'image/x-icon');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.sendFile(path.join(__dirname, 'public', 'favicon.ico'));
+});
+
+// Debug route to check static files
+app.get('/debug/static', (req, res) => {
+  const fs = require('fs');
+  const publicPath = path.join(__dirname, 'public');
+
   try {
-    const ffmpegAvailable = await checkFFmpegAvailability();
-    const directoriesExist = fs.existsSync(uploadsDir) && fs.existsSync(outputDir);
+    const files = fs.readdirSync(publicPath);
+    const fileStats = {};
 
-    const health = {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      environment: {
-        platform: process.platform,
-        nodeVersion: process.version,
-        isRailway: process.env.RAILWAY_ENVIRONMENT !== undefined,
-        isRender: process.env.RENDER !== undefined,
-        isProduction: process.env.NODE_ENV === 'production'
-      },
-      services: {
-        ffmpeg: ffmpegAvailable,
-        directories: directoriesExist,
-        uploadsDir: uploadsDir,
-        outputDir: outputDir
-      }
-    };
-
-    const statusCode = ffmpegAvailable && directoriesExist ? 200 : 503;
-    res.status(statusCode).json(health);
-  } catch (error) {
-    res.status(503).json({
-      status: 'error',
-      error: error.message,
-      timestamp: new Date().toISOString()
+    files.forEach(file => {
+      const filePath = path.join(publicPath, file);
+      const stats = fs.statSync(filePath);
+      fileStats[file] = {
+        size: stats.size,
+        exists: fs.existsSync(filePath),
+        isFile: stats.isFile()
+      };
     });
+
+    res.json({
+      publicPath,
+      files: fileStats,
+      __dirname,
+      cwd: process.cwd()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
