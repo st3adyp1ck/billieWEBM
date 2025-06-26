@@ -24,9 +24,9 @@ The 500 error on Railway has been resolved by addressing these critical issues:
 - Better handling of file size limits and format validation
 
 ### 5. **Railway-Specific Configuration**
-- Added `nixpacks.toml` for proper FFmpeg installation
 - Updated `railway.json` with health check endpoint
 - Added environment-specific configurations
+- Improved FFmpeg detection for Railway's default environment
 
 ## 📋 Deployment Steps
 
@@ -38,9 +38,10 @@ git push origin main
 ```
 
 ### 2. **Deploy on Railway**
-- Railway will automatically detect the changes
-- The new `nixpacks.toml` ensures FFmpeg is installed
+- Railway will automatically detect the changes and use Nixpacks
+- Railway's default environment should include FFmpeg
 - Health check endpoint `/health` will verify everything is working
+- If FFmpeg is missing, Railway logs will show detailed error information
 
 ### 3. **Monitor Deployment**
 - Check Railway logs for the detailed startup messages
@@ -81,8 +82,9 @@ Expected response:
 ### Common Issues & Solutions
 
 1. **FFmpeg Not Found**
-   - Check if `nixpacks.toml` is in root directory
-   - Verify Railway build logs show FFmpeg installation
+   - Railway should have FFmpeg available by default
+   - Check Railway build logs for any FFmpeg-related errors
+   - If needed, you can add a custom nixpacks.toml file with: `[phases.setup]\nnixPkgs = ["ffmpeg"]`
 
 2. **Directory Permission Errors**
    - Should automatically use `/tmp` on Railway
@@ -118,7 +120,22 @@ Expected response:
 4. **Conversion**: Should process videos correctly
 5. **Download**: Should provide converted files
 
-## 🚨 If Issues Persist
+## 🚨 If FFmpeg Issues Persist
+
+If you get FFmpeg-related errors during deployment:
+
+1. **Check Railway logs** for FFmpeg availability
+2. **Visit `/health` endpoint** to see FFmpeg status
+3. **If FFmpeg is missing**, rename `nixpacks.toml.backup` to `nixpacks.toml`:
+   ```bash
+   mv nixpacks.toml.backup nixpacks.toml
+   git add nixpacks.toml
+   git commit -m "Add FFmpeg to nixpacks configuration"
+   git push origin main
+   ```
+4. **Redeploy** and check logs again
+
+## 🚨 Other Issues
 
 1. Check Railway deployment logs
 2. Visit `/health` endpoint

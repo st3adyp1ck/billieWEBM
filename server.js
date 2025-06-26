@@ -126,40 +126,6 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Health check endpoint for Railway
-app.get('/health', async (req, res) => {
-  try {
-    const ffmpegAvailable = await checkFFmpegAvailability();
-    const directoriesExist = fs.existsSync(uploadsDir) && fs.existsSync(outputDir);
-
-    const health = {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      environment: {
-        platform: process.platform,
-        nodeVersion: process.version,
-        isRailway: process.env.RAILWAY_ENVIRONMENT !== undefined,
-        isProduction: process.env.NODE_ENV === 'production'
-      },
-      services: {
-        ffmpeg: ffmpegAvailable,
-        directories: directoriesExist,
-        uploadsDir: uploadsDir,
-        outputDir: outputDir
-      }
-    };
-
-    const statusCode = ffmpegAvailable && directoriesExist ? 200 : 503;
-    res.status(statusCode).json(health);
-  } catch (error) {
-    res.status(503).json({
-      status: 'error',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
 // Upload and convert video
 app.post('/api/convert', upload.single('video'), async (req, res) => {
   if (!req.file) {
@@ -169,11 +135,15 @@ app.post('/api/convert', upload.single('video'), async (req, res) => {
   // Check if FFmpeg is available
   const ffmpegAvailable = await checkFFmpegAvailability();
   if (!ffmpegAvailable) {
+    console.log('ERROR: FFmpeg not available');
     // Clean up uploaded file
     fs.remove(req.file.path).catch(console.error);
-    return res.status(500).json({
-      error: 'FFmpeg is not installed on this system. Please install FFmpeg to use video conversion.',
-      installInstructions: 'Visit https://ffmpeg.org/download.html to download and install FFmpeg.'
+    return res.status(503).json({
+      error: 'Video conversion service is temporarily unavailable. FFmpeg is not installed or accessible.',
+      details: 'This is likely a deployment configuration issue. Please contact support.',
+      platform: process.platform,
+      environment: process.env.NODE_ENV || 'development',
+      isRailway: process.env.RAILWAY_ENVIRONMENT !== undefined
     });
   }
 

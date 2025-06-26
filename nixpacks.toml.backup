@@ -1,0 +1,5 @@
+# Backup nixpacks configuration for Railway deployment
+# Rename this file to "nixpacks.toml" if FFmpeg is not available by default
+
+[phases.setup]
+nixPkgs = ["ffmpeg"]
