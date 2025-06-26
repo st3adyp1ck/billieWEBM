@@ -25,17 +25,59 @@ if (process.platform === 'win32') {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Cloud platform detection
+const isRailway = process.env.RAILWAY_ENVIRONMENT !== undefined;
+const isRender = process.env.RENDER !== undefined;
+const isProduction = process.env.NODE_ENV === 'production';
+
+console.log('=== SERVER CONFIGURATION ===');
+console.log('Port:', PORT);
+console.log('Is Railway:', isRailway);
+console.log('Is Render:', isRender);
+console.log('Is Production:', isProduction);
+console.log('Node Version:', process.version);
+
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+  origin: isProduction ? true : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  credentials: true
+}));
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static('public'));
 
-// Create uploads and output directories
-const uploadsDir = path.join(__dirname, 'uploads');
-const outputDir = path.join(__dirname, 'output');
+// Add request logging for debugging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
-fs.ensureDirSync(uploadsDir);
-fs.ensureDirSync(outputDir);
+// Create uploads and output directories
+// Use /tmp for Render and other cloud platforms
+const baseDir = isRender || isRailway || isProduction ? '/tmp' : __dirname;
+const uploadsDir = path.join(baseDir, 'uploads');
+const outputDir = path.join(baseDir, 'output');
+
+console.log('=== DIRECTORY SETUP ===');
+console.log('Base directory:', baseDir);
+console.log('Uploads directory:', uploadsDir);
+console.log('Output directory:', outputDir);
+
+try {
+  fs.ensureDirSync(uploadsDir);
+  fs.ensureDirSync(outputDir);
+  console.log('Directories created successfully');
+
+  // Test write permissions
+  const testFile = path.join(uploadsDir, 'test.txt');
+  fs.writeFileSync(testFile, 'test');
+  fs.removeSync(testFile);
+  console.log('Directory write permissions verified');
+} catch (error) {
+  console.error('Directory setup failed:', error);
+  console.error('This may cause upload failures');
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -126,6 +168,41 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Health check endpoint for cloud platforms
+app.get('/health', async (req, res) => {
+  try {
+    const ffmpegAvailable = await checkFFmpegAvailability();
+    const directoriesExist = fs.existsSync(uploadsDir) && fs.existsSync(outputDir);
+
+    const health = {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      environment: {
+        platform: process.platform,
+        nodeVersion: process.version,
+        isRailway: process.env.RAILWAY_ENVIRONMENT !== undefined,
+        isRender: process.env.RENDER !== undefined,
+        isProduction: process.env.NODE_ENV === 'production'
+      },
+      services: {
+        ffmpeg: ffmpegAvailable,
+        directories: directoriesExist,
+        uploadsDir: uploadsDir,
+        outputDir: outputDir
+      }
+    };
+
+    const statusCode = ffmpegAvailable && directoriesExist ? 200 : 503;
+    res.status(statusCode).json(health);
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Upload and convert video
 app.post('/api/convert', upload.single('video'), async (req, res) => {
   if (!req.file) {
@@ -135,15 +212,11 @@ app.post('/api/convert', upload.single('video'), async (req, res) => {
   // Check if FFmpeg is available
   const ffmpegAvailable = await checkFFmpegAvailability();
   if (!ffmpegAvailable) {
-    console.log('ERROR: FFmpeg not available');
     // Clean up uploaded file
     fs.remove(req.file.path).catch(console.error);
-    return res.status(503).json({
-      error: 'Video conversion service is temporarily unavailable. FFmpeg is not installed or accessible.',
-      details: 'This is likely a deployment configuration issue. Please contact support.',
-      platform: process.platform,
-      environment: process.env.NODE_ENV || 'development',
-      isRailway: process.env.RAILWAY_ENVIRONMENT !== undefined
+    return res.status(500).json({
+      error: 'FFmpeg is not installed on this system. Please install FFmpeg to use video conversion.',
+      installInstructions: 'Visit https://ffmpeg.org/download.html to download and install FFmpeg.'
     });
   }
 

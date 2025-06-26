@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: billie-webm-converter
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+    disk:
+      name: tmp-storage
+      mountPath: /tmp
+      sizeGB: 1
